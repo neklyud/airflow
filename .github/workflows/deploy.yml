@@ -18,11 +18,15 @@ jobs:
       
       - name: Deploy
         uses: appleboy/ssh-action@v0.1.8
+        env:
+            POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          envs: POSTGRES_USER,POSTGRES_PASSWORD
           script: |
             rm -r airflow
             git clone git@github.com:neklyud/airflow
