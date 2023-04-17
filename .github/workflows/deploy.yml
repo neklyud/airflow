@@ -21,13 +21,13 @@ jobs:
         env:
             POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
             POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-            AIRFLOW_PROJ_DIR: ${{ vars.AIRFLOW_PROJ_DIR }}
+            AIRFLOW_LOG_DIR: ${{ vars.AIRFLOW_LOG_DIR }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: POSTGRES_USER,POSTGRES_PASSWORD,AIRFLOW_PROJ_DIR
+          envs: POSTGRES_USER,POSTGRES_PASSWORD,AIRFLOW_LOG_DIR
           script: |
             rm -r airflow
             git clone git@github.com:neklyud/airflow
