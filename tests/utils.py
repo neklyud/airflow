@@ -1,4 +1,5 @@
 import json
+
 from requests.exceptions import HTTPError
 
 
@@ -10,6 +11,6 @@ class MockedResponse:
     def raise_for_status(self):
         if self.status_code >= 400 and self.status_code <= 500:
             raise HTTPError()
-        
+
     def json(self):
         return json.loads(self.text)
