@@ -1,62 +1,60 @@
-import json
-import logging
-from copy import deepcopy
 from typing import Any
-
-import requests
-from web3 import Web3
-
-from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models.connection import Connection
-
-logging.basicConfig(level=logging.INFO)
-
-ETHERSCAN_API = "https://api.etherscan.io/api"
-SNOWTRACE_API = "https://api.snowtrace.io/api"
-FTMSCAN_API = "https://api.ftmscan.com/api"
-ARBISCAN_API = "https://api.ftmscan.com/api"
-BSCSCAN_API = "https://api.bscscan.com/api"
-OPTIMISTIC_ETHERSCAN_API = "https://api-optimistic.etherscan.io/api"
-POLYGONSCAN_API = "https://api.polygonscan.com/api"
-MOONSCAN_API = "https://api.moonscan.com/api"
+from web3 import Web3
+from copy import deepcopy
+from airflow.exceptions import AirflowException
+from functools import cached_property    
+from typing import Optional, Sequence, Callable
+from web3.contract import Contract
 
 
 class Web3Hook(BaseHook):
     """Interact with web3"""
 
-    conn_name_attr: str = "web3_conn_id"
-    conn_type: str = "web3"
-    hook_name: str = "Web3"
-    default_conn_name: str = "web3"
-
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if not self.conn_name_attr:
-            raise AirflowException("conn_name_attr is not defined")
-        elif len(args) == 1:
-            setattr(self, self.conn_name_attr, args[0])
-        elif self.conn_name_attr not in kwargs:
-            setattr(self, self.conn_name_attr, self.default_conn_name)
-        else:
-            setattr(self, self.conn_name_attr, kwargs[self.conn_name_attr])
+        self.conn_id: str | None = kwargs.pop('conn_id', None)
         self.connection: Connection | None = kwargs.pop("connection", None)
-        self.explorer: str | None = kwargs.pop("scanner", None)
-        self.conn: Web3 = None
+        self._w3: Web3 | None = kwargs.pop('web3', None)
+        self._middlewares: Sequence[Any] | None = kwargs.pop('middlewares', None)
 
-    def get_conn(self) -> Any:
-        conn_id = getattr(self, self.conn_name_attr)
-        conn = deepcopy(self.connection or self.get_connection(conn_id))
-        self.conn = Web3(Web3.HTTPProvider(conn.host))
+    def get_conn(self) -> Connection:
+        return self.get_connection(self.conn_id)
 
-    def toChecksumAddress(self, address: str) -> str:
-        return Web3.toChecksumAddress(address)
+    @cached_property
+    def w3(self) -> Web3:
+        conn = deepcopy(self.connection or self.get_connection(self.conn_id))
+        self._w3 = Web3(provider=Web3.HTTPProvider(conn.host), middlewares=self._middlewares)
+        return self._w3
+    
+    def get_contract(self, address: str, abi: Any) -> Contract:
+        return self.w3.eth.contract(address=address, abi=abi)
+    
 
-    def _fetch_abi(self, address: str) -> list:
-        checksumAddress = self.toChecksumAddress(address=address)
-        response = requests.get(
-            f"{self.explorer}?module=contract&action=getabi&address={checksumAddress}"
-        )
-        response_json = response.json()
-        abi_json = json.loads(response_json["result"])
-        return abi_json
+class Web3ContractHook(Web3Hook):
+    def __init__(self, address: str, abi: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.address: str = Web3.toChecksumAddress(address)
+        self.abi: Any = abi
+        self.contract = self.get_contract(self.address, self.abi)
+
+
+    def event_callback(self, name: str) -> Callable:
+        def inner(from_block: int, to_block: int, *args, **kwargs):
+            filters = kwargs.get('filters', None)
+            block_hash = kwargs.get('block_hash', None)
+            return self.contract.events[name].getLogs(filters, from_block, to_block, block_hash)
+        return inner
+    
+    def contract_function_callback(self, function: str) -> Callable:
+        def inner(block: int | str = 'latest', *args, **kwargs):
+            return self.contract.functions[function].call(block_identifier=block, *args, **kwargs)
+        return inner
+
+    def __getattr__(self, name: str):
+        contract_functions = [func.function_identifier for func in self.contract.all_functions()]
+        if name in contract_functions:
+            return self.contract_function_callback(name)
+        if name in self.contract.events:
+            return self.event_callback(name=name)
+        raise AttributeError('Action not found')
