@@ -77,11 +77,10 @@ x-airflow-common:
     - ${AIRFLOW_LOG_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
   user: "${AIRFLOW_UID:-50000}:0"
-  depends_on:
-    &airflow-common-depends-on
-
-    # redis:
-    #   condition: service_healthy
+  # depends_on:
+  #   &airflow-common-depends-on
+  #   redis:
+  #     condition: service_healthy
 
 services:
   # redis:
